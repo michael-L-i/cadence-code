@@ -2,10 +2,11 @@
 
 ## Project Overview
 
-`cadence-code` is a Codex and Claude Code plugin: a fully local voice companion
-for Apple Silicon. Its stdio MCP process owns local TTS and STT models directly
-while a voice conversation is active. There is no HTTP daemon or local
-summarization model; the host coding agent provides the exact text sent to TTS.
+`cadence-code` is a Codex, Claude Code, and Cursor plugin: a
+fully local voice companion for Apple Silicon. Its stdio MCP process owns local
+TTS and STT models directly while a voice conversation is active. There is no
+HTTP daemon or local summarization model; the host coding agent provides the
+exact text sent to TTS.
 
 MLX is the speech inference backend, not a second reasoning layer. Speech
 models run through `mlx-audio`; some TTS implementations reuse `mlx-lm` cache
@@ -13,8 +14,8 @@ and sampling utilities internally, but Cadence Code never loads a local
 reasoning or summarization model.
 
 There is no passive narration. Users explicitly choose Start Talking with
-`$start-talking` or `/skills` in Codex, or `/cadence-code:start-talking` in
-Claude Code:
+`$start-talking` or `/skills` in Codex, `/cadence-code:start-talking` in Claude
+Code, or `/start-talking` in Cursor:
 
 - On a new install, the host calls `voice_models`, shows the fixed first-run
   orientation, and persists its returned Pocket TTS and Parakeet 110M defaults
@@ -55,14 +56,23 @@ through the host's plugin mechanism; there is no manual MCP configuration.
   prevents Claude Code from also discovering it as a project MCP server during
   direct-checkout development.
 - `.agents/plugins/marketplace.json`: Codex marketplace metadata for this repo.
+- `.cursor-plugin/plugin.json`: Cursor plugin manifest. It exposes the canonical
+  Agent Skills and points at the root `mcp.json` without loading the
+  Claude-specific command files.
+- `.cursor-plugin/marketplace.json`: lets the repository serve as a direct
+  GitHub Cursor plugin source.
+- `mcp.json`: installed Cursor stdio MCP declaration. It resolves the bootstrap
+  through `${CURSOR_PLUGIN_ROOT}` and identifies the host as `cursor`.
 - `skills/start-talking/`, `skills/jump-in/`, `skills/wrap-up/`, and
-  `skills/voice-settings/`: canonical Codex workflows.
-- `.agents/skills/`: relative symlinks to every canonical Codex skill so direct
-  checkouts expose the same workflows as installed plugins.
+  `skills/voice-settings/`: canonical Codex and Cursor workflows.
+- `.agents/skills/`: relative symlinks to every canonical Agent Skill so direct
+  Codex and Cursor checkouts expose the installed workflows.
+- `.cursor/mcp.json`: Cursor workspace MCP declaration used by `./dev cursor`
+  without installing the plugin.
 - `bin/cadence-code-mcp-bootstrap`: a pure-bash wrapper. Builds a private venv
   under `CADENCE_CODE_DATA_DIR` on first run (or after a dependency change),
   then `exec`s into the real `cadence-code-mcp` entrypoint inside it. Claude Code
-  points that variable at its plugin data directory; Codex uses `~/.cadence-code`.
+  points that variable at its plugin data directory; Codex and Cursor use `~/.cadence-code`.
   Every log line in this script goes to stderr only -- stdout is the live MCP
   JSON-RPC channel, and any stray stdout output corrupts the protocol
   handshake.
@@ -75,8 +85,9 @@ through the host's plugin mechanism; there is no manual MCP configuration.
 - `cadence_code/cli.py`: Click CLI with `doctor` and `listen-test` for direct
   development. The plugin path invokes the MCP bootstrap instead.
 - `cadence_code/config.py`: Pydantic config models. `CONFIG_DIR` reads the
-  `CADENCE_CODE_DATA_DIR` env var (set to `${CLAUDE_PLUGIN_DATA}` by the plugin
-  manifest, falling back to `~/.cadence-code` for Codex and direct-Python dev).
+  `CADENCE_CODE_DATA_DIR` env var (set to `${CLAUDE_PLUGIN_DATA}` by the Claude
+  manifest, falling back to `~/.cadence-code` for Codex, Cursor,
+  and direct-Python dev).
   Existing configs are migrated away from the retired `[daemon]` and
   `[summarizer]` sections without replacing current voice or audio choices.
 - `config/default_config.toml`: default speech model and audio settings
@@ -119,7 +130,8 @@ python -m unittest discover -s tests -v
 For behavioral changes, run the unit tests plus the narrowest relevant manual
 check, usually `cadence-code doctor`, `cadence-code listen-test`, or a direct
 `voice_start`/`voice_speak`/`voice_interrupt`/`voice_listen`/`voice_stop`
-sequence through a real Codex or Claude Code MCP client session.
+sequence through a real Codex, Claude Code, or Cursor MCP client
+session.
 
 ## Visible Plugin Test Sessions
 
@@ -130,10 +142,10 @@ Start Talking on the user's behalf and leave the session open for hands-on
 audio testing; do not ask the user to type routine launch, install, or
 initialization commands.
 
-Support both Claude Code and Codex as first-class test hosts. If the user does
-not name a host, default to Claude Code. If the user names Codex, launch and
-initialize a Codex test tab instead; do not substitute Claude Code merely
-because its direct-checkout workflow is simpler.
+Support Claude Code, Codex, and Cursor as first-class test hosts.
+If the user does not name a host, default to Claude Code. Launch the named host
+rather than substituting another host because its direct-checkout workflow is
+simpler.
 
 - For a local Claude Code branch test, run `./dev claude`, then send
   `/cadence-code:start-talking`. This tests the checkout directly through
@@ -141,6 +153,10 @@ because its direct-checkout workflow is simpler.
 - For a local Codex branch test, run `./dev codex`, then send `$start-talking`.
   The launcher injects the checkout's MCP server for that process only and does
   not install a plugin or configure a marketplace.
+- For a local Cursor branch test, run `./dev cursor`, then send
+  `/start-talking`. The launcher uses the checkout's `.cursor` MCP configuration
+  and shared Agent Skills without installing a plugin or changing user
+  configuration.
 - For a GitHub release test, update/install the normal GitHub-backed plugin,
   verify the requested version and source, launch the host without a local
   plugin override, and invoke Start Talking.

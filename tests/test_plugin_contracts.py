@@ -243,6 +243,23 @@ class PluginContractTests(unittest.TestCase):
             self.assertIn("wait_for_speech: true", workflow)
             self.assertIn("exactly once", workflow)
             self.assertIn("Do not listen again", workflow)
+        self.assertIn("/wrap-up", skill)
+
+    def test_cursor_install_workflow_is_documented(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "/add-plugin cadence-code@https://github.com/michael-L-i/cadence-code",
+            readme,
+        )
+        for command in (
+            "/start-talking",
+            "/jump-in",
+            "/voice-settings",
+            "/wrap-up",
+        ):
+            self.assertIn(command, readme)
+        self.assertIn("Cursor Settings > Plugins", readme)
 
     def test_bootstrap_is_valid_bash_and_checks_platform_before_rebuild(self):
         bootstrap = ROOT / "bin/cadence-code-mcp-bootstrap"
