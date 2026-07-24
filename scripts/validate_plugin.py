@@ -43,6 +43,22 @@ def validate_development_skills(failures: list[str]) -> None:
             )
 
 
+def validate_cursor_development_mcp(failures: list[str]) -> None:
+    server = load_json(".cursor/mcp.json").get("mcpServers", {}).get(
+        "cadence-code", {}
+    )
+    if server.get("command") != "bash":
+        failures.append("Cursor development MCP must launch through bash")
+    if server.get("args") != [
+        "${workspaceFolder}/bin/cadence-code-mcp-bootstrap"
+    ]:
+        failures.append("Cursor development MCP must use the checkout bootstrap")
+    if server.get("cwd") != "${workspaceFolder}":
+        failures.append("Cursor development MCP must run from the checkout root")
+    if server.get("env", {}).get("CADENCE_CODE_HOST") != "cursor":
+        failures.append("Cursor development MCP must preserve its host identity")
+
+
 def main() -> int:
     with (ROOT / "pyproject.toml").open("rb") as file:
         project = tomllib.load(file)["project"]
@@ -98,8 +114,10 @@ def main() -> int:
         failures.append("Cursor MCP server must preserve its host identity")
 
     validate_development_skills(failures)
+    validate_cursor_development_mcp(failures)
 
     required_paths = [
+        ".cursor/mcp.json",
         ".cursor-plugin/marketplace.json",
         ".cursor-plugin/plugin.json",
         "bin/cadence-code-mcp-bootstrap",
