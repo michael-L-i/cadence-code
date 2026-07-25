@@ -273,14 +273,12 @@ class PluginContractTests(unittest.TestCase):
     def test_cursor_and_antigravity_install_workflows_are_documented(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-        # /add-plugin only resolves marketplace-listed names, so the README
-        # must document the marketplace-add flow rather than a GitHub URL.
-        self.assertIn(
-            "cursor-agent plugin marketplace add "
-            "https://github.com/michael-L-i/cadence-code",
-            readme,
-        )
+        # /add-plugin only resolves marketplace-listed names, and the Agent
+        # CLI has no plugin subcommand, so the README must send users to the
+        # Cursor app rather than to any URL or CLI install.
+        self.assertIn("/add-plugin cadence-code", readme)
         self.assertNotIn("/add-plugin cadence-code@", readme)
+        self.assertNotIn("cursor-agent plugin", readme)
         # Antigravity documents installing from a local path.
         self.assertIn("agy plugin install ./cadence-code", readme)
         for command in (

@@ -42,17 +42,12 @@ Start a new Codex session, then run `$start-talking` (or pick Start Talking from
 
 **Cursor 2.5+** (IDE and Agent CLI)
 
-Cursor's `/add-plugin` resolves names that are already listed on the Cursor
-Marketplace, so it cannot install this repository by URL. Register the
-repository as a marketplace first:
+Install from **Cursor Settings > Plugins** in the Cursor app, or run
+`/add-plugin cadence-code` in chat. Both resolve names listed on the Cursor
+Marketplace; a GitHub URL is not accepted, and the Agent CLI has no plugin
+subcommand, so plugins have to be installed from the app.
 
-```bash
-cursor-agent plugin marketplace add https://github.com/michael-L-i/cadence-code
-```
-
-Restart Cursor, run `/plugin`, open the Marketplace tab, and install Cadence
-Code. Start a new session, then run `/start-talking`. On recent builds the CLI
-is installed as `agent` rather than `cursor-agent`.
+Start a new Cursor session, then run `/start-talking`.
 
 **Google Antigravity** (AGY CLI and IDE)
 
@@ -61,9 +56,7 @@ git clone https://github.com/michael-L-i/cadence-code
 agy plugin install ./cadence-code
 ```
 
-Start a new AGY or Antigravity IDE session, then run `/start-talking`. If your
-AGY build accepts a repository URL, `agy plugin install
-https://github.com/michael-L-i/cadence-code` does the same thing in one step.
+Start a new AGY or Antigravity IDE session, then run `/start-talking`.
 
 On first run Cadence Code shows a quick orientation, starts with Pocket TTS and
 Parakeet 110M, requests microphone access, and downloads both models

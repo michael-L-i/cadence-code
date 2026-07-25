@@ -79,24 +79,35 @@ Adding a host means adding one `host_*` function there, not five JSON files.
 
   Both installed declarations run the bootstrap through a generated `bash -c`
   launcher rather than a bare path, because neither host documents a
-  plugin-root placeholder for MCP manifests. The launcher tries the host's
-  placeholder (`${CURSOR_PLUGIN_ROOT}` / `${extensionPath}`), then `$PWD`, then
-  the host's known install directory, and exits on stderr if none resolve. A
-  host that does not substitute the placeholder leaves bash an unset variable,
-  which empties harmlessly; later candidates avoid `${...}` so a host that
-  substitutes every token cannot blank them. The launcher also exports
-  `CADENCE_CODE_HOST` itself, because AGY 1.1.6 accepts but does not pass the
-  documented stdio `env` object. Neither declaration sets `cwd`: an
-  unsubstituted placeholder there is a literal directory name and fails the
-  launch outright, and the bootstrap already resolves its own root.
+  plugin-root placeholder for MCP manifests. **AGY 1.1.6 is confirmed not to
+  expand `${extensionPath}`** -- verified by running a session outside the
+  checkout, where the launcher's `$PWD` candidate cannot match -- so the
+  placeholders are treated as unreliable rather than trusted. The launcher
+  tries the host placeholder, then `$PWD`, then the real install directory, and
+  exits on stderr if none resolve. A host that does not substitute the
+  placeholder leaves bash an unset variable, which empties harmlessly; later
+  candidates avoid `${...}` so a host that substitutes every token cannot blank
+  them. The launcher also exports `CADENCE_CODE_HOST` itself, because AGY
+  accepts but does not pass the documented stdio `env` object. Neither
+  declaration sets `cwd`: an unsubstituted placeholder there is a literal
+  directory name and fails the launch outright, and the bootstrap already
+  resolves its own root.
+
+  The install directories are host-specific and neither matches its own docs:
+  AGY uses `~/.gemini/config/plugins/<name>` (not
+  `~/.gemini/antigravity-cli/plugins/`), and Cursor uses `~/.cursor/plugins/`
+  with a `local/` subdirectory for side-loaded plugins. Both Cursor layouts are
+  tried since that host's install could not be observed directly.
 - `skills/start-talking/`, `skills/jump-in/`, `skills/wrap-up/`, and
   `skills/voice-settings/`: canonical Codex, Cursor, and Antigravity workflows.
 - `.agents/skills/`: relative symlinks to every canonical Agent Skill so direct
   Codex, Cursor, and Antigravity checkouts expose the installed workflows.
 - `.cursor/mcp.json`: Cursor workspace MCP declaration used by `./dev cursor`
   without installing the plugin.
-- `.agents/mcp_config.json`: Antigravity workspace MCP declaration used by
-  `./dev agy` without installing the plugin.
+- `.agents/mcp_config.json`: Antigravity workspace MCP declaration. AGY 1.1.6
+  does not actually read it, so `./dev agy` installs the checkout as a plugin
+  instead; this is kept for the documented workspace path and for AGY builds
+  that honour it.
 - `bin/cadence-code-mcp-bootstrap`: a pure-bash wrapper. Builds a private venv
   under `CADENCE_CODE_DATA_DIR` on first run (or after a dependency change),
   then `exec`s into the real `cadence-code-mcp` entrypoint inside it. Claude Code
@@ -185,13 +196,15 @@ simpler.
 - For a local Cursor branch test, run `./dev cursor`, then send
   `/start-talking`. The launcher uses the checkout's `.cursor` MCP configuration
   and shared Agent Skills without installing a plugin or changing user
-  configuration. To test the manifest users actually install -- including
-  whether Cursor expands the undocumented `${CURSOR_PLUGIN_ROOT}` -- run
-  `./dev cursor --plugin`, which loads the checkout through `--plugin-dir` with
-  `CADENCE_CODE_HOST` unset. Confirm `voice_status` reports `host: "cursor"`.
+  configuration. Cursor needs approval before loading a workspace MCP server:
+  if the voice tools are missing, run `agent mcp enable cadence-code` and
+  relaunch. The Agent CLI has no flag for loading an unpublished plugin from a
+  directory, so the installed-plugin path cannot be tested locally.
 - For a local Antigravity branch test, run `./dev agy`, then send
-  `/start-talking`. The launcher uses the checkout's `.agents` MCP and skill
-  configuration without installing a plugin or changing user configuration.
+  `/start-talking`. AGY 1.1.6 ignores a workspace `.agents/mcp_config.json`, so
+  unlike every other host the launcher installs the checkout as a real plugin
+  into `~/.gemini/config/plugins/cadence-code` first. Rerun it after changing a
+  manifest, a skill, or the bootstrap.
 - For a GitHub release test, update/install the normal GitHub-backed plugin,
   verify the requested version and source, launch the host without a local
   plugin override, and invoke Start Talking.

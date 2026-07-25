@@ -113,30 +113,32 @@ Nothing is installed globally and no user-level Cursor configuration is
 changed. Use `./dev cursor --fresh` to repeat first-run setup without rebuilding
 the development venv.
 
-That workspace path does not cover the manifest users actually install. Cursor
-does not document a plugin-root placeholder for MCP manifests, so before
-shipping a Cursor change, also run:
+Cursor requires approval before it loads a workspace MCP server. If the voice
+tools are missing, run `agent mcp list`; when `cadence-code` shows "needs
+approval", run `agent mcp enable cadence-code` and relaunch.
 
-```bash
-./dev cursor --plugin
-```
+That workspace path does not cover the manifest users actually install, and the
+Agent CLI has no flag for loading an unpublished plugin from a directory, so
+the installed-plugin path cannot be exercised locally. The generated launcher
+in `scripts/host_manifests.py` is what protects it: Antigravity's equivalent
+placeholder is known not to expand, so the launcher never depends on
+`${CURSOR_PLUGIN_ROOT}` resolving either.
 
-This loads `.cursor-plugin/plugin.json` and the root `mcp.json` through
-`--plugin-dir` with `CADENCE_CODE_HOST` unset, which is the only local check
-that the shipped manifest resolves the bootstrap on its own. Confirm
-`voice_status` reports `host: "cursor"`.
-
-Antigravity CLI uses the checkout's native workspace MCP configuration and the
-same Agent Skills:
+Antigravity is the one host that cannot be driven from the checkout. AGY 1.1.6
+ignores a workspace `.agents/mcp_config.json`, so `./dev agy` installs the
+checkout as a real plugin before launching:
 
 ```bash
 ./dev agy
 ```
 
 Then invoke `/start-talking`, `/voice-settings`, `/jump-in`, or `/wrap-up`.
-Nothing is installed globally and no user-level Antigravity configuration is
-changed. Use `./dev agy --fresh` to repeat first-run setup without rebuilding
-the development venv.
+This does change user-level state: the checkout is copied into
+`~/.gemini/config/plugins/cadence-code`, so rerun `./dev agy` after changing a
+manifest, a skill, or the bootstrap. Pass `--no-install` to skip the reinstall
+when only Python sources changed, and remove it with `agy plugin uninstall
+cadence-code`. Use `./dev agy --fresh` to repeat first-run setup without
+rebuilding the development venv.
 
 When you need to discard every local-development venv and configuration, first
 close Claude Code, Codex, Cursor, Antigravity, and MCP Inspector sessions using

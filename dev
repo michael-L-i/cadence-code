@@ -63,7 +63,7 @@ EOF
 
 cursor_help() {
   cat <<'EOF'
-Usage: ./dev cursor [--fresh] [--plugin] [cursor-agent-options]
+Usage: ./dev cursor [--fresh] [cursor-agent-options]
 
 Launch Cursor Agent from the repository root. The checkout's workspace MCP
 configuration and shared Agent Skills load directly; no plugin is installed and
@@ -71,23 +71,34 @@ no user Cursor configuration is changed. Inside Cursor, run /start-talking.
 Use --fresh to clear the development configuration and onboarding marker while
 keeping the private venv.
 
-Use --plugin to load the checkout through --plugin-dir instead, which exercises
-the installed-plugin path: .cursor-plugin/plugin.json and the root mcp.json,
-including whether Cursor expands ${CURSOR_PLUGIN_ROOT}. That placeholder is
-undocumented, so this is the only local check that the shipped manifest
-resolves. The workspace .cursor/mcp.json is bypassed.
+Cursor requires approval before it loads a workspace MCP server. If
+/start-talking reports no voice tools, run `agent mcp list`; when cadence-code
+shows "needs approval", run `agent mcp enable cadence-code` and relaunch.
+
+The Cursor Agent CLI has no flag for loading an unpublished plugin from a
+directory, so the installed-plugin path (.cursor-plugin/plugin.json plus the
+root mcp.json) cannot be exercised here. See CONTRIBUTING.md.
 EOF
 }
 
 agy_help() {
   cat <<'EOF'
-Usage: ./dev agy [--fresh] [agy-options]
+Usage: ./dev agy [--fresh] [--no-install] [agy-options]
 
-Launch Antigravity CLI from the repository root. The checkout's workspace MCP
-configuration and shared Agent Skills load directly; no plugin is installed and
-no user Antigravity configuration is changed. Inside AGY, run /start-talking.
+Install the checkout as an Antigravity plugin, then launch AGY from the
+repository root. Inside AGY, run /start-talking.
+
+Unlike the other hosts this does change user-level state: AGY 1.1.6 ignores a
+workspace .agents/mcp_config.json, so a plugin install is the only way it loads
+the voice tools. The install copies the checkout into
+~/.gemini/config/plugins/cadence-code, so rerun ./dev agy after changing a
+manifest, a skill, or the bootstrap. Remove it with:
+
+  agy plugin uninstall cadence-code
+
 Use --fresh to clear the development configuration and onboarding marker while
-keeping the private venv.
+keeping the private venv. Use --no-install to skip the reinstall when only
+Python sources changed.
 EOF
 }
 
@@ -335,15 +346,11 @@ run_cursor() {
   fi
 
   local fresh=0
-  local plugin=0
   local -a cursor_args=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --fresh)
         fresh=1
-        ;;
-      --plugin)
-        plugin=1
         ;;
       *)
         cursor_args+=("$1")
@@ -366,23 +373,11 @@ run_cursor() {
   fi
   cd "${REPO_ROOT}"
   export CADENCE_CODE_DATA_DIR="${data_dir}"
-
-  local -a cursor_config=(--workspace "${REPO_ROOT}")
-  if [ "${plugin}" = "1" ]; then
-    # Load the shipped plugin manifest instead of the workspace MCP file, and
-    # leave CADENCE_CODE_HOST unset so the run proves the manifest itself
-    # establishes host identity and resolves the bootstrap.
-    cursor_config+=(--plugin-dir "${REPO_ROOT}")
-    unset CADENCE_CODE_HOST
-    echo "[cadence-code-dev] loading the installed Cursor plugin path" >&2
-  else
-    export CADENCE_CODE_HOST="cursor"
-  fi
-
+  export CADENCE_CODE_HOST="cursor"
   if [ "${#cursor_args[@]}" -eq 0 ]; then
-    exec "${cursor_bin}" "${cursor_config[@]}"
+    exec "${cursor_bin}" --workspace "${REPO_ROOT}"
   fi
-  exec "${cursor_bin}" "${cursor_config[@]}" "${cursor_args[@]}"
+  exec "${cursor_bin}" --workspace "${REPO_ROOT}" "${cursor_args[@]}"
 }
 
 run_agy() {
@@ -392,11 +387,15 @@ run_agy() {
   fi
 
   local fresh=0
+  local install=1
   local -a agy_args=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --fresh)
         fresh=1
+        ;;
+      --no-install)
+        install=0
         ;;
       *)
         agy_args+=("$1")
@@ -418,6 +417,17 @@ run_agy() {
     echo "[cadence-code-dev] reset Antigravity development onboarding"
   fi
   cd "${REPO_ROOT}"
+  if [ "${install}" = "1" ]; then
+    # AGY 1.1.6 does not read a workspace .agents/mcp_config.json, so the
+    # checkout has to be installed as a real plugin for its tools to load.
+    # Reinstalling picks up manifest, skill, and bootstrap changes.
+    "${agy_bin}" plugin uninstall cadence-code >/dev/null 2>&1 || true
+    if ! "${agy_bin}" plugin install "${REPO_ROOT}" >&2; then
+      echo "[cadence-code-dev] ERROR: could not install the checkout plugin." >&2
+      exit 1
+    fi
+    echo "[cadence-code-dev] installed the checkout as an AGY plugin" >&2
+  fi
   export CADENCE_CODE_DATA_DIR="${data_dir}"
   export CADENCE_CODE_HOST="antigravity"
   if [ "${#agy_args[@]}" -eq 0 ]; then

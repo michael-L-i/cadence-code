@@ -269,46 +269,6 @@ class DevCliTests(unittest.TestCase):
         self.assertIn("arg=--model", arguments)
         self.assertIn("arg=test-model", arguments)
 
-    def test_cursor_plugin_mode_exercises_the_installed_manifest(self):
-        """--plugin is the only local check of the shipped Cursor manifest.
-
-        ${CURSOR_PLUGIN_ROOT} is undocumented, so the workspace .cursor/mcp.json
-        path cannot prove the installed mcp.json resolves. This mode must load
-        the checkout through --plugin-dir and must not pre-set the host, or a
-        broken manifest would be masked by the launcher's own environment.
-        """
-        with tempfile.TemporaryDirectory() as directory:
-            temp = Path(directory)
-            fake_cursor = temp / "agent"
-            fake_cursor.write_text(
-                "#!/bin/bash\n"
-                "printf 'host=%s\\n' \"${CADENCE_CODE_HOST-unset}\"\n"
-                "printf 'arg=%s\\n' \"$@\"\n",
-                encoding="utf-8",
-            )
-            fake_cursor.chmod(0o755)
-            data_root = temp / "data"
-            env = {
-                **os.environ,
-                "CADENCE_CODE_DEV_CURSOR_BIN": str(fake_cursor),
-                "CADENCE_CODE_DEV_DATA_ROOT": str(data_root),
-            }
-            env.pop("CADENCE_CODE_HOST", None)
-
-            result = subprocess.run(
-                [DEV, "cursor", "--plugin"],
-                check=True,
-                capture_output=True,
-                text=True,
-                env=env,
-            )
-
-        arguments = result.stdout.splitlines()
-        self.assertIn("arg=--plugin-dir", arguments)
-        self.assertIn(f"arg={ROOT}", arguments)
-        self.assertIn("host=unset", arguments)
-        self.assertNotIn("arg=--plugin", arguments)
-
     def test_cursor_workspace_mcp_uses_checkout_bootstrap(self):
         server = json.loads(
             (ROOT / ".cursor/mcp.json").read_text(encoding="utf-8")
@@ -392,6 +352,46 @@ class DevCliTests(unittest.TestCase):
         self.assertIn("host=antigravity", result.stdout)
         self.assertIn("arg=--model", result.stdout)
         self.assertIn("arg=test-model", result.stdout)
+
+    def test_agy_installs_the_checkout_because_workspace_config_is_ignored(self):
+        """AGY 1.1.6 ignores .agents/mcp_config.json, so ./dev agy must install.
+
+        Verified against the real CLI: a session in the checkout reports no
+        voice_ tools until `agy plugin install .` runs. Skipping the install
+        would leave ./dev agy silently useless.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            fake_agy = temp / "agy"
+            fake_agy.write_text(
+                "#!/bin/bash\n"
+                "printf 'call=%s\\n' \"$*\" >>" + str(temp / "calls") + "\n"
+                "printf 'arg=%s\\n' \"$@\"\n",
+                encoding="utf-8",
+            )
+            fake_agy.chmod(0o755)
+            env = {
+                **os.environ,
+                "CADENCE_CODE_DEV_AGY_BIN": str(fake_agy),
+                "CADENCE_CODE_DEV_DATA_ROOT": str(temp / "data"),
+            }
+
+            subprocess.run(
+                [DEV, "agy"], check=True, capture_output=True, text=True, env=env
+            )
+            calls = (temp / "calls").read_text(encoding="utf-8")
+            self.assertIn(f"call=plugin install {ROOT}", calls)
+            self.assertIn("call=plugin uninstall cadence-code", calls)
+
+            (temp / "calls").unlink()
+            subprocess.run(
+                [DEV, "agy", "--no-install"],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertNotIn("plugin install", (temp / "calls").read_text())
 
     def test_agy_workspace_mcp_uses_checkout_bootstrap(self):
         server = json.loads(

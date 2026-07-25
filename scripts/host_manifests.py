@@ -232,9 +232,16 @@ def host_cursor(version: str) -> dict[str, dict]:
                     "args": bootstrap_args(
                         "cursor",
                         [
+                            # Cursor keeps installed plugins under
+                            # ~/.cursor/plugins, with a local/ subdirectory for
+                            # side-loaded ones. Both layouts are tried because
+                            # ${CURSOR_PLUGIN_ROOT} is undocumented and the
+                            # equivalent Antigravity placeholder is known not
+                            # to expand.
                             "${CURSOR_PLUGIN_ROOT}",
                             "$PWD",
                             f"$HOME/.cursor/plugins/{NAME}",
+                            f"$HOME/.cursor/plugins/local/{NAME}",
                         ],
                     ),
                     "env": {"CADENCE_CODE_HOST": "cursor"},
@@ -281,9 +288,15 @@ def host_antigravity(_version: str) -> dict[str, dict]:
                     "args": bootstrap_args(
                         "antigravity",
                         [
+                            # AGY 1.1.6 does not expand ${extensionPath}, so
+                            # the install directory below is what actually
+                            # resolves. Verified by running a session outside
+                            # the checkout, where $PWD cannot match. The path
+                            # is NOT the ~/.gemini/antigravity-cli/plugins/
+                            # location the Antigravity docs describe.
                             "${extensionPath}",
                             "$PWD",
-                            f"$HOME/.gemini/antigravity-cli/plugins/{NAME}",
+                            f"$HOME/.gemini/config/plugins/{NAME}",
                         ],
                     ),
                     "env": {"CADENCE_CODE_HOST": "antigravity"},
