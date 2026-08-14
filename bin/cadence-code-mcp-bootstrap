@@ -59,9 +59,9 @@ process_started_at() {
   ps -p "$1" -o lstart= 2>/dev/null | awk '{$1=$1; print}'
 }
 
-LOCK_TOKEN="$$.${RANDOM}.$(date +%s)"
+LOCK_NONCE="$$.${RANDOM}.$(date +%s)"
 LOCK_STARTED_AT=$(process_started_at "$$")
-LOCK_RECORD="$$|${LOCK_STARTED_AT}|${LOCK_TOKEN}"
+LOCK_RECORD="$$|${LOCK_STARTED_AT}|${LOCK_NONCE}"
 HAVE_INSTALL_LOCK=0
 
 release_install_lock() {
@@ -77,7 +77,7 @@ release_install_lock() {
 reap_install_lock() {
   EXPECTED_OWNER=$1
   RECOVERY_MESSAGE=$2
-  CLAIMED_OWNER="${INSTALL_LOCK_OWNER}.reaping.${LOCK_TOKEN}"
+  CLAIMED_OWNER="${INSTALL_LOCK_OWNER}.reaping.${LOCK_NONCE}"
 
   if [ -e "${INSTALL_LOCK_OWNER}" ]; then
     if [ "$(cat "${INSTALL_LOCK_OWNER}" 2>/dev/null || true)" != \
@@ -117,14 +117,14 @@ acquire_install_lock() {
     OWNER_PID=${OWNER_RECORD%%|*}
     OWNER_REMAINDER=${OWNER_RECORD#*|}
     OWNER_STARTED_AT=${OWNER_REMAINDER%%|*}
-    OWNER_TOKEN=${OWNER_REMAINDER#*|}
+    OWNER_NONCE=${OWNER_REMAINDER#*|}
     OWNER_IS_VALID=1
     case "${OWNER_PID}" in
       ""|*[!0-9]*) OWNER_IS_VALID=0 ;;
     esac
     if [ "${OWNER_REMAINDER}" = "${OWNER_RECORD}" ] || \
-       [ "${OWNER_TOKEN}" = "${OWNER_REMAINDER}" ] || \
-       [ -z "${OWNER_STARTED_AT}" ] || [ -z "${OWNER_TOKEN}" ]; then
+       [ "${OWNER_NONCE}" = "${OWNER_REMAINDER}" ] || \
+       [ -z "${OWNER_STARTED_AT}" ] || [ -z "${OWNER_NONCE}" ]; then
       OWNER_IS_VALID=0
     fi
 
