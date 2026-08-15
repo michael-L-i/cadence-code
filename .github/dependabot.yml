@@ -6,12 +6,36 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      # Routine upgrades arrive as one PR. Major bumps stay ungrouped so each
+      # one is reviewed on its own.
       python-minor-and-patch:
         update-types:
           - minor
           - patch
+    ignore:
+      # spaCy 3.8.14 and 3.8.15 still ship no CPython 3.14 wheels, so anything
+      # at or above 3.8.14 breaks the macOS Python 3.14 jobs and contradicts
+      # the range pinned in pyproject.toml. Drop this entry once upstream
+      # publishes cp314 wheels, and widen the pyproject constraint with it.
+      - dependency-name: spacy
+        versions:
+          - ">=3.8.14"
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # codeql-action/init and codeql-action/analyze must always move
+      # together. Bumped in separate PRs, each one leaves the workflow with
+      # mismatched versions and CodeQL refuses to run. Grouping every
+      # GitHub-owned action keeps related steps in a single PR.
+      github-owned-actions:
+        patterns:
+          - "actions/*"
+          - "github/*"
+    # hashgraph-online/ai-plugin-scanner-action is deliberately left out of the
+    # group above. It is the only third-party action the repository Actions
+    # policy allows, so each bump should arrive as its own PR and be reviewed
+    # rather than merged alongside routine GitHub-owned updates.
