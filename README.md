@@ -4,125 +4,149 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11-3.14](https://img.shields.io/badge/Python-3.11--3.14-blue.svg)](https://www.python.org/)
 
-A local voice interface for Codex and Claude Code on Apple Silicon. Start
-Talking, speak naturally, and let your coding agent decide what to say back —
-no daemon, no cloud, no second language model in the loop. See
-[Cadence Code privacy](PRIVACY.md) for the exact local-processing and host
-handoff boundary.
+Natural voice conversations with Codex and Claude Code, fully local on Apple
+Silicon.
 
-## Requirements
+Talk through a bug, redirect a task, or hear a quick update when your hands are
+busy or your eyes need a break. Your coding agent still does the thinking;
+Cadence Code simply handles speech.
 
-- Apple Silicon Mac, macOS 14+
-- Python 3.11-3.14 on `PATH`
-- A working microphone and output device, with mic permission for the host app
-- Internet access for the initial install and selected model downloads
-- ~500 MB-4.5 GB disk space depending on the models you pick (shared with other
-  local Hugging Face apps)
+- **Local speech:** TTS and STT run on your Mac with MLX.
+- **Natural turns:** speak, listen, interrupt, and continue without reloading
+  models.
+- **Explicit control:** Cadence Code listens only after you start a conversation.
+- **No extra reasoning layer:** no daemon, cloud speech service, or second
+  language model.
 
-## Install
+## Quick start
 
-**Claude Code**
+Requires an Apple Silicon Mac running macOS 14+, Python 3.11-3.14, a microphone,
+and an output device. Internet access is needed for installation and the first
+model downloads.
+
+### Claude Code
 
 ```text
 /plugin marketplace add michael-L-i/cadence-code
 /plugin install cadence-code@cadence-code-marketplace
 ```
 
-Restart Claude Code, then run `/cadence-code:start-talking`.
+Restart Claude Code, then run:
 
-**Codex** (CLI and desktop app; the IDE extension doesn't support plugins yet)
+```text
+/cadence-code:start-talking
+```
+
+### Codex
 
 ```bash
 codex plugin marketplace add michael-L-i/cadence-code
 codex plugin add cadence-code@cadence-code-marketplace
 ```
 
-Start a new Codex session, then run `$start-talking` (or pick Start Talking from
-`/skills`).
+Start a new Codex session, then run `$start-talking` or choose **Start Talking**
+from `/skills`.
 
-On first run Cadence Code shows a quick orientation, starts with Pocket TTS and
-Parakeet 110M, requests microphone access, and downloads both models
-automatically. Change either model anytime with `/cadence-code:voice-settings`
-(Claude Code) or `$voice-settings` (Codex).
+> Codex plugins work in the CLI and desktop app. The IDE extension does not yet
+> support them.
 
-During a conversation, press Escape and use `/cadence-code:jump-in` or
-`$jump-in` to redirect by voice. Use `/cadence-code:wrap-up` or `$wrap-up` to
-end cleanly and release the local speech models. Saying "stop" or "goodbye"
-does the same thing.
+On first run, Cadence Code selects recommended defaults, asks for microphone
+access, and downloads the speech models automatically. If Claude Code is still
+finishing the one-time setup, run `/reload-plugins` when prompted and start
+again.
 
-If Claude Code's voice tools are still connecting on first use, Start Talking
-finishes the one-time dependency setup and asks you to run `/reload-plugins`
-before invoking it again.
+## Talking with Cadence Code
 
-To update, re-run the marketplace/plugin update commands for your host, then
-fully restart it — an already-running MCP process isn't replaced in place.
+| Action | Claude Code | Codex |
+| --- | --- | --- |
+| Start a conversation | `/cadence-code:start-talking` | `$start-talking` |
+| Interrupt and redirect | `/cadence-code:jump-in` | `$jump-in` |
+| Change speech models | `/cadence-code:voice-settings` | `$voice-settings` |
+| End and release models | `/cadence-code:wrap-up` | `$wrap-up` |
+
+You can also say "stop" or "goodbye" to end a conversation.
 
 ## How it works
 
-Cadence Code runs one lightweight stdio MCP server alongside your coding agent.
-The agent decides what to say and writes every spoken response; Cadence Code
-just converts that text to speech and your replies back to text, using local
-MLX models. Detailed answers stay on screen — voice gets a short, separately
-composed version, like a coworker giving you the useful part instead of
-reading a terminal response aloud.
+Cadence Code runs as a lightweight stdio MCP server beside your coding agent.
+It loads local speech models only when a conversation starts, keeps them warm
+between turns, and releases them when the conversation ends.
 
-Only one voice conversation can hold the microphone and model memory at a
-time, enforced by a machine-wide lock so Codex, Claude Code, and dev sessions
-never collide.
+Raw audio and speech inference stay on your Mac. Your transcript is returned to
+Codex or Claude Code, which decides what to do and composes the exact response
+spoken back to you. See [Cadence Code privacy](PRIVACY.md) for the complete
+boundary.
 
-## Model choices
+Only one Cadence Code conversation can use the microphone and model memory at a
+time.
 
-| TTS model card | Tier | Language | License | Download |
-| --- | --- | --- | --- | ---: |
-| [Pocket TTS 100M](https://huggingface.co/mlx-community/pocket-tts) | Lightweight | English | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | 236 MB |
-| [Kokoro 82M](https://huggingface.co/mlx-community/Kokoro-82M-bf16) | Lightweight | English | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 389 MB |
-| [Chatterbox Turbo 350M](https://huggingface.co/mlx-community/chatterbox-turbo-4bit) | Balanced | English | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 417 MB |
-| [Qwen 0.6B](https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit) | Heavy, highest quality | English | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 1.97 GB |
+<details>
+<summary><strong>Voice models and download sizes</strong></summary>
 
-| STT model card | Tier | Language | License | Download |
-| --- | --- | --- | --- | ---: |
-| [Moonshine Base 61M](https://huggingface.co/UsefulSensors/moonshine-base) | Lightweight | English | [MIT](https://opensource.org/license/mit) | 248 MB |
-| [Parakeet 110M](https://huggingface.co/mlx-community/parakeet-tdt_ctc-110m) | Balanced | English | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | 459 MB |
-| [Parakeet 0.6B v3](https://huggingface.co/mlx-community/parakeet-tdt-0.6b-v3) | Heavy, highest accuracy | 25 languages | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | 2.51 GB |
+### Text to speech
 
-TTS is currently English-only. For multilingual transcription, choose
-Parakeet 0.6B v3. Follow each model card for its upstream license terms.
+| Model | Tier | Language | Download |
+| --- | --- | --- | ---: |
+| [Pocket TTS 100M](https://huggingface.co/mlx-community/pocket-tts) | Lightweight | English | 236 MB |
+| [Kokoro 82M](https://huggingface.co/mlx-community/Kokoro-82M-bf16) | Lightweight | English | 389 MB |
+| [Chatterbox Turbo 350M](https://huggingface.co/mlx-community/chatterbox-turbo-4bit) | Balanced | English | 417 MB |
+| [Qwen 0.6B](https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit) | Highest quality | English | 1.97 GB |
+
+### Speech to text
+
+| Model | Tier | Language | Download |
+| --- | --- | --- | ---: |
+| [Moonshine Base 61M](https://huggingface.co/UsefulSensors/moonshine-base) | Lightweight | English | 248 MB |
+| [Parakeet 110M](https://huggingface.co/mlx-community/parakeet-tdt_ctc-110m) | Balanced | English | 459 MB |
+| [Parakeet 0.6B v3](https://huggingface.co/mlx-community/parakeet-tdt-0.6b-v3) | Highest accuracy | 25 languages | 2.51 GB |
+
+Pocket TTS and Parakeet 110M are the defaults. TTS is currently English-only;
+choose Parakeet 0.6B v3 for multilingual transcription. Follow each linked
+model card for its license terms.
+
+</details>
 
 ## Configuration
 
-Settings live in `config.toml` — `~/.cadence-code` for Codex and direct
-development, or Claude Code's per-plugin data directory. It has `[tts]`,
-`[stt]`, and `[audio]` sections for model, voice, speed, endpointing, and
-device choices; upgrades migrate old configs automatically.
+Use the voice settings command to choose models. Advanced model, voice, speed,
+endpointing, and audio-device settings live in `config.toml`:
 
-Model weights are cached in Hugging Face's shared cache
-(`~/.cache/huggingface/hub`), not Cadence Code's own directory, so switching
-models keeps the previous one for other local MLX tools to reuse. Clean up
-manually with:
+- Codex and direct development: `~/.cadence-code/config.toml`
+- Claude Code: the plugin's data directory
 
-```bash
-hf cache scan
-hf cache delete --sort size
-```
+Model weights use the shared Hugging Face cache at
+`~/.cache/huggingface/hub`. Depending on your choices, downloads require about
+500 MB to 4.5 GB.
 
-## Troubleshooting
+<details>
+<summary><strong>Troubleshooting</strong></summary>
 
 - **No microphone or output:** allow mic access for Codex or Claude Code in
-  macOS **System Settings > Privacy & Security > Microphone**, verify the
-  `[audio]` device settings, then restart the host.
-- **Setup or model download fails:** confirm the supported Python version,
-  internet access, and free disk space, then restart the host to retry.
+  **System Settings > Privacy & Security > Microphone**, check the configured
+  audio devices, and restart the host.
+- **Setup or download fails:** check your Python version, internet connection,
+  and free disk space, then restart the host to retry.
 - **Session already in use:** stop Cadence Code in every Codex, Claude Code, and
-  dev session — only one process can own the audio session at a time.
-- **An update still reports the old version:** fully exit every host process
-  that loaded Cadence Code and start a new one.
+  development session.
+- **An update still shows the old version:** fully exit every host process that
+  loaded Cadence Code, then start a new one.
 
-For a checkout-based diagnosis, run `uv run --locked cadence-code doctor` or
-`uv run --locked cadence-code listen-test`.
+For checkout-based diagnostics:
 
-## Uninstall
+```bash
+uv run --locked cadence-code doctor
+uv run --locked cadence-code listen-test
+```
 
-Stop every Cadence Code session first.
+</details>
+
+<details>
+<summary><strong>Updating and uninstalling</strong></summary>
+
+To update, rerun the marketplace and plugin update commands for your host, then
+fully restart it. A running MCP process is not replaced in place.
+
+To uninstall:
 
 ```bash
 # Codex
@@ -134,10 +158,11 @@ claude plugin uninstall cadence-code@cadence-code-marketplace
 claude plugin marketplace remove cadence-code-marketplace
 ```
 
-Both leave configuration and the private Python environment behind (decline
-`--keep-data` in Claude Code to remove them too); delete `~/.cadence-code`
-manually for Codex. Model weights stay in the shared Hugging Face cache — use
-the cache commands above to remove specific ones.
+Configuration, private environments, and shared model weights may remain after
+uninstalling. Codex data lives in `~/.cadence-code`; model weights live in the
+Hugging Face cache.
+
+</details>
 
 ## Development
 
@@ -151,21 +176,17 @@ uv run --locked cadence-code doctor
 ./dev codex    # local branch test in Codex
 ```
 
-See [AGENTS.md](AGENTS.md) for the full project map and MCP tool reference,
-and [CONTRIBUTING.md](CONTRIBUTING.md) before changing the lock file. CI and
-release details are in [RELEASING.md](RELEASING.md).
+See [AGENTS.md](AGENTS.md) for the project map,
+[CONTRIBUTING.md](CONTRIBUTING.md) before changing dependencies, and
+[RELEASING.md](RELEASING.md) for release details.
 
-## Contributing and support
+## Community
 
-Contributions are welcome. Use
-[GitHub Discussions](https://github.com/michael-L-i/cadence-code/discussions)
-for questions and the
-[issue forms](https://github.com/michael-L-i/cadence-code/issues/new/choose)
+Questions and ideas are welcome in
+[GitHub Discussions](https://github.com/michael-L-i/cadence-code/discussions).
+Use the [issue forms](https://github.com/michael-L-i/cadence-code/issues/new/choose)
 for bugs and feature proposals.
 
-Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report security
-issues privately as described in [SECURITY.md](SECURITY.md).
-
-## License
-
-Cadence Code is released under the [MIT License](LICENSE).
+Cadence Code is released under the [MIT License](LICENSE). Please follow the
+[Code of Conduct](CODE_OF_CONDUCT.md), and report security issues privately as
+described in [SECURITY.md](SECURITY.md).
