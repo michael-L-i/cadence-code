@@ -59,13 +59,20 @@ Maintain two outputs for completed work:
    configuration fails, show the error and end without calling `voice_start`.
    Existing users with `first_run: false` skip the fixed script and automatic
    default configuration silently.
-2. Call `voice_start` and wait for the audio preflight and local speech models.
-   Do not call any Cadence Code audio tool before this explicit skill invocation.
-   If it returns `ok: false`, show the error and end without retrying.
-3. Verify the result includes `version`, `host`, `capture`, and `preflight`, and
-   that `host` is `codex`. If not, the MCP process is stale or misconfigured:
-   call `voice_stop`, ask the user to start a new Codex session after updating
-   or reinstalling the plugin, and end.
+2. Call `voice_start`, then poll `voice_status` until `ready` is true.
+   `voice_start` returns as soon as the audio preflight passes and loads the
+   speech models in the background, so a first-run model download can never
+   outlive the host's MCP tool deadline. While `starting` is true, wait between
+   polls; do not narrate or start other work. If `start_error` is set, show it
+   and end without retrying. Do not call any Cadence Code audio tool before
+   this explicit skill invocation, and do not call `voice_speak` or
+   `voice_listen` until `ready` is true. If `voice_start` or a poll returns
+   `ok: false`, show the error and end without retrying.
+3. Verify the completed start result or final status includes `version`,
+   `host`, `capture`, and `preflight`, and that `host` is `codex`. If not, the
+   MCP process is stale or misconfigured: call `voice_stop`, ask the user to
+   start a new Codex session after updating or reinstalling the plugin, and
+   end.
 4. Speak a greeting with `listen_after: true`, then call `voice_listen`
    immediately. If `first_run` was true, use this short introduction verbatim:
    "Welcome to Cadence Code. I want to talk with you about whatever you're
