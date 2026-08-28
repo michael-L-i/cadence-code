@@ -13,6 +13,7 @@ Commands:
   inspector   Open the checkout's MCP server in MCP Inspector
   claude      Launch Claude Code with the checkout loaded directly
   codex       Launch Codex with the checkout's MCP server directly
+  agy         Launch Antigravity with the checkout installed as its plugin
   reset       Remove all isolated local-development state
 EOF
 }
@@ -21,8 +22,8 @@ check_help() {
   cat <<'EOF'
 Usage: ./dev check
 
-Run Bash syntax checks, the Python unit tests, and strict Claude plugin
-validation when the Claude Code CLI is installed. This command does not install
+Run Bash syntax checks, the Python unit tests, and each installed host's own
+plugin validator (Claude Code and Antigravity). This command does not install
 dependencies or download speech models.
 EOF
 }
@@ -60,14 +61,37 @@ keeping the private venv.
 EOF
 }
 
+agy_help() {
+  cat <<'EOF'
+Usage: ./dev agy [--fresh] [--no-install] [agy-options]
+
+Install the checkout as an Antigravity plugin, then launch Antigravity from
+the repository root. Inside Antigravity, run /start-talking.
+
+Unlike the other hosts this does change user-level state: AGY 1.1.6 ignores a
+workspace MCP configuration, so a plugin install is the only way it loads the
+voice tools. The install copies the checkout into
+~/.gemini/config/plugins/cadence-code, so rerun ./dev agy after changing a
+manifest, a skill, or the bootstrap; Python sources still run from the
+checkout because its own bootstrap resolves first. Remove the plugin with:
+
+  agy plugin uninstall cadence-code
+
+Use --fresh to clear the development configuration and onboarding marker while
+keeping the private venv. Use --no-install to skip the reinstall when only
+Python sources changed.
+EOF
+}
+
 reset_help() {
   cat <<'EOF'
 Usage: ./dev reset
 
 Move the checkout's complete .cadence-code-dev directory to macOS Trash. This
 removes development venvs, configuration, and onboarding state for Inspector,
-Claude Code, and Codex. Production plugin data and shared model caches are not
-touched. Close every Cadence Code host session before running this command.
+Claude Code, Codex, and Antigravity. Production plugin data and shared model
+caches are not touched. Close every Cadence Code host session before running
+this command.
 EOF
 }
 
@@ -170,6 +194,13 @@ run_check() {
     claude plugin validate --strict "${REPO_ROOT}"
   else
     echo "[cadence-code-dev] Claude Code is not installed; skipping plugin validation" >&2
+  fi
+
+  if command -v agy >/dev/null 2>&1; then
+    echo "[cadence-code-dev] validating Antigravity plugin"
+    agy plugin validate "${REPO_ROOT}"
+  else
+    echo "[cadence-code-dev] Antigravity is not installed; skipping plugin validation" >&2
   fi
 }
 
@@ -289,6 +320,62 @@ run_codex() {
   exec "${codex_bin}" "${cadence_code_config[@]}" "${codex_args[@]}"
 }
 
+run_agy() {
+  if [ "${1:-}" = "--help" ]; then
+    agy_help
+    return
+  fi
+
+  local fresh=0
+  local install=1
+  local -a agy_args=()
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --fresh)
+        fresh=1
+        ;;
+      --no-install)
+        install=0
+        ;;
+      *)
+        agy_args+=("$1")
+        ;;
+    esac
+    shift
+  done
+
+  local agy_bin="${CADENCE_CODE_DEV_AGY_BIN:-agy}"
+  if ! command -v "${agy_bin}" >/dev/null 2>&1; then
+    echo "[cadence-code-dev] ERROR: Antigravity is not installed." >&2
+    exit 1
+  fi
+
+  local data_dir
+  data_dir=$(development_dir antigravity)
+  if [ "${fresh}" = "1" ]; then
+    reset_onboarding "${data_dir}"
+    echo "[cadence-code-dev] reset Antigravity development onboarding"
+  fi
+  cd "${REPO_ROOT}"
+  if [ "${install}" = "1" ]; then
+    # AGY 1.1.6 does not read a workspace MCP configuration, so the checkout
+    # has to be installed as a real plugin for its tools to load.
+    # Reinstalling picks up manifest, skill, and bootstrap changes.
+    "${agy_bin}" plugin uninstall cadence-code >/dev/null 2>&1 || true
+    if ! "${agy_bin}" plugin install "${REPO_ROOT}" >&2; then
+      echo "[cadence-code-dev] ERROR: could not install the checkout plugin." >&2
+      exit 1
+    fi
+    echo "[cadence-code-dev] installed the checkout as an Antigravity plugin" >&2
+  fi
+  export CADENCE_CODE_DATA_DIR="${data_dir}"
+  export CADENCE_CODE_HOST="antigravity"
+  if [ "${#agy_args[@]}" -eq 0 ]; then
+    exec "${agy_bin}"
+  fi
+  exec "${agy_bin}" "${agy_args[@]}"
+}
+
 case "${1:-}" in
   check)
     shift
@@ -305,6 +392,10 @@ case "${1:-}" in
   codex)
     shift
     run_codex "$@"
+    ;;
+  agy|antigravity)
+    shift
+    run_agy "$@"
     ;;
   reset)
     shift

@@ -231,6 +231,117 @@ class DevCliTests(unittest.TestCase):
             self.assertTrue(keep.exists())
         self.assertNotIn("arg=--fresh", result.stdout)
 
+    def test_agy_loads_checkout_with_development_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            fake_agy = temp / "agy"
+            fake_agy.write_text(
+                "#!/bin/bash\n"
+                "printf 'cwd=%s\\n' \"$PWD\"\n"
+                "printf 'data=%s\\n' \"$CADENCE_CODE_DATA_DIR\"\n"
+                "printf 'host=%s\\n' \"$CADENCE_CODE_HOST\"\n"
+                "printf 'arg=%s\\n' \"$@\"\n",
+                encoding="utf-8",
+            )
+            fake_agy.chmod(0o755)
+            data_root = temp / "data"
+            env = {
+                **os.environ,
+                "CADENCE_CODE_DEV_AGY_BIN": str(fake_agy),
+                "CADENCE_CODE_DEV_DATA_ROOT": str(data_root),
+            }
+
+            result = subprocess.run(
+                [DEV, "agy", "--no-install", "--model", "test-model"],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+        self.assertIn(f"cwd={ROOT}", result.stdout)
+        self.assertIn(f"data={data_root.resolve()}/antigravity", result.stdout)
+        self.assertIn("host=antigravity", result.stdout)
+        self.assertIn("arg=--model", result.stdout)
+        self.assertIn("arg=test-model", result.stdout)
+        self.assertNotIn("arg=--no-install", result.stdout)
+
+    def test_agy_installs_the_checkout_because_workspace_config_is_ignored(self):
+        """AGY 1.1.6 ignores workspace MCP configuration, so ./dev agy installs.
+
+        Verified against the real CLI: a session in the checkout reports no
+        voice_ tools until `agy plugin install .` runs. Skipping the install
+        would leave ./dev agy silently useless.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            fake_agy = temp / "agy"
+            fake_agy.write_text(
+                "#!/bin/bash\n"
+                "printf 'call=%s\\n' \"$*\" >>" + str(temp / "calls") + "\n",
+                encoding="utf-8",
+            )
+            fake_agy.chmod(0o755)
+            env = {
+                **os.environ,
+                "CADENCE_CODE_DEV_AGY_BIN": str(fake_agy),
+                "CADENCE_CODE_DEV_DATA_ROOT": str(temp / "data"),
+            }
+
+            subprocess.run(
+                [DEV, "agy"], check=True, capture_output=True, text=True, env=env
+            )
+            calls = (temp / "calls").read_text(encoding="utf-8")
+            self.assertIn("call=plugin uninstall cadence-code", calls)
+            self.assertIn(f"call=plugin install {ROOT}", calls)
+
+            (temp / "calls").unlink()
+            subprocess.run(
+                [DEV, "agy", "--no-install"],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertNotIn("plugin install", (temp / "calls").read_text())
+
+    def test_agy_fresh_resets_onboarding_but_keeps_venv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            fake_agy = temp / "agy"
+            fake_agy.write_text(
+                "#!/bin/bash\nprintf 'arg=%s\\n' \"$@\"\n",
+                encoding="utf-8",
+            )
+            fake_agy.chmod(0o755)
+            data_root = temp / "data"
+            agy_data = data_root / "antigravity"
+            venv = agy_data / "venv"
+            venv.mkdir(parents=True)
+            (agy_data / "config.toml").write_text("configured\n")
+            (agy_data / "onboarding-v1.complete").write_text("done\n")
+            keep = venv / "keep"
+            keep.write_text("warm\n")
+            env = {
+                **os.environ,
+                "CADENCE_CODE_DEV_AGY_BIN": str(fake_agy),
+                "CADENCE_CODE_DEV_DATA_ROOT": str(data_root),
+            }
+
+            result = subprocess.run(
+                [DEV, "agy", "--fresh", "--no-install"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((agy_data / "config.toml").exists())
+            self.assertFalse((agy_data / "onboarding-v1.complete").exists())
+            self.assertTrue(keep.exists())
+        self.assertNotIn("arg=--fresh", result.stdout)
+
     def test_reset_removes_only_guarded_development_root(self):
         with tempfile.TemporaryDirectory() as directory:
             temp = Path(directory)
