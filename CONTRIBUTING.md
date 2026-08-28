@@ -49,7 +49,7 @@ uv export --locked --no-dev --no-emit-project --no-annotate --no-header \
 Run `uv lock --check` before opening a pull request. CI also verifies that the
 committed export still exactly matches `uv.lock`.
 
-To inspect the checkout's MCP tools without installing either host plugin, run:
+To inspect the checkout's MCP tools without installing any host plugin, run:
 
 ```bash
 ./dev inspector
@@ -91,8 +91,24 @@ user-level Codex configuration is changed.
 Use `./dev codex --fresh` to repeat first-run model selection without rebuilding
 the development venv.
 
+Antigravity has no way to load an unpublished checkout for a single session --
+AGY 1.1.6 ignores workspace MCP configuration -- so its launcher installs the
+checkout as a real plugin under `~/.gemini/config/plugins/cadence-code`:
+
+```bash
+./dev agy
+```
+
+Then invoke `/start-talking`, `/voice-settings`, `/jump-in`, or `/wrap-up`.
+Rerun `./dev agy` after changing a manifest, a skill, or the bootstrap; pass
+`--no-install` when only Python sources changed, since the checkout's own
+bootstrap resolves first. Remove the plugin afterwards with
+`agy plugin uninstall cadence-code`, and use `./dev agy --fresh` to repeat
+first-run onboarding without rebuilding the development venv.
+
 When you need to discard every local-development venv and configuration, first
-close Claude Code, Codex, and MCP Inspector sessions using Cadence Code, then run:
+close Claude Code, Codex, Antigravity, and MCP Inspector sessions using
+Cadence Code, then run:
 
 ```bash
 ./dev reset

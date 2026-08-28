@@ -238,6 +238,21 @@ class PluginContractTests(unittest.TestCase):
             self.assertIn("exactly once", workflow)
             self.assertIn("Do not listen again", workflow)
 
+    def test_antigravity_install_workflow_is_documented(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        # Antigravity has no marketplace; the README documents installing
+        # from a local clone and removing the plugin by name.
+        self.assertIn("agy plugin install ./cadence-code", readme)
+        self.assertIn("agy plugin uninstall cadence-code", readme)
+        for command in (
+            "/start-talking",
+            "/jump-in",
+            "/voice-settings",
+            "/wrap-up",
+        ):
+            self.assertIn(f"`{command}`", readme)
+
     def test_bootstrap_is_valid_bash_and_checks_platform_before_rebuild(self):
         bootstrap = ROOT / "bin/cadence-code-mcp-bootstrap"
         result = subprocess.run(

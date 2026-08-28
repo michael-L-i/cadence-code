@@ -4,8 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11-3.14](https://img.shields.io/badge/Python-3.11--3.14-blue.svg)](https://www.python.org/)
 
-Natural voice conversations with Codex and Claude Code, fully local on Apple
-Silicon.
+Natural voice conversations with Claude Code, Codex, and Antigravity, fully
+local on Apple Silicon.
 
 Talk through a bug, redirect a task, or hear a quick update when your hands are
 busy or your eyes need a break. Your coding agent still does the thinking;
@@ -50,19 +50,28 @@ from `/skills`.
 > Codex plugins work in the CLI and desktop app. The IDE extension does not yet
 > support them.
 
+### Antigravity
+
+```bash
+git clone https://github.com/michael-L-i/cadence-code
+agy plugin install ./cadence-code
+```
+
+Restart Antigravity, then run `/start-talking`.
+
 On first run, Cadence Code selects recommended defaults, asks for microphone
 access, and downloads the speech models automatically. If Claude Code is still
 finishing the one-time setup, run `/reload-plugins` when prompted and start
-again.
+again; other hosts just need a restart.
 
 ## Talking with Cadence Code
 
-| Action | Claude Code | Codex |
-| --- | --- | --- |
-| Start a conversation | `/cadence-code:start-talking` | `$start-talking` |
-| Interrupt and redirect | `/cadence-code:jump-in` | `$jump-in` |
-| Change speech models | `/cadence-code:voice-settings` | `$voice-settings` |
-| End and release models | `/cadence-code:wrap-up` | `$wrap-up` |
+| Action | Claude Code | Codex | Antigravity |
+| --- | --- | --- | --- |
+| Start a conversation | `/cadence-code:start-talking` | `$start-talking` | `/start-talking` |
+| Interrupt and redirect | `/cadence-code:jump-in` | `$jump-in` | `/jump-in` |
+| Change speech models | `/cadence-code:voice-settings` | `$voice-settings` | `/voice-settings` |
+| End and release models | `/cadence-code:wrap-up` | `$wrap-up` | `/wrap-up` |
 
 You can also say "stop" or "goodbye" to end a conversation.
 
@@ -73,7 +82,7 @@ It loads local speech models only when a conversation starts, keeps them warm
 between turns, and releases them when the conversation ends.
 
 Raw audio and speech inference stay on your Mac. Your transcript is returned to
-Codex or Claude Code, which decides what to do and composes the exact response
+your coding agent, which decides what to do and composes the exact response
 spoken back to you. See [Cadence Code privacy](PRIVACY.md) for the complete
 boundary.
 
@@ -111,7 +120,7 @@ model card for its license terms.
 Use the voice settings command to choose models. Advanced model, voice, speed,
 endpointing, and audio-device settings live in `config.toml`:
 
-- Codex and direct development: `~/.cadence-code/config.toml`
+- Codex, Antigravity, and direct development: `~/.cadence-code/config.toml`
 - Claude Code: the plugin's data directory
 
 Model weights use the shared Hugging Face cache at
@@ -121,13 +130,13 @@ Model weights use the shared Hugging Face cache at
 <details>
 <summary><strong>Troubleshooting</strong></summary>
 
-- **No microphone or output:** allow mic access for Codex or Claude Code in
+- **No microphone or output:** allow mic access for your coding agent in
   **System Settings > Privacy & Security > Microphone**, check the configured
   audio devices, and restart the host.
 - **Setup or download fails:** check your Python version, internet connection,
   and free disk space, then restart the host to retry.
-- **Session already in use:** stop Cadence Code in every Codex, Claude Code, and
-  development session.
+- **Session already in use:** stop Cadence Code in every Codex, Claude Code,
+  Antigravity, and development session.
 - **An update still shows the old version:** fully exit every host process that
   loaded Cadence Code, then start a new one.
 
@@ -156,11 +165,17 @@ codex plugin marketplace remove cadence-code-marketplace
 # Claude Code
 claude plugin uninstall cadence-code@cadence-code-marketplace
 claude plugin marketplace remove cadence-code-marketplace
+
+# Antigravity
+agy plugin uninstall cadence-code
 ```
 
+Antigravity updates the same way: pull or re-clone the repository and rerun
+`agy plugin install`.
+
 Configuration, private environments, and shared model weights may remain after
-uninstalling. Codex data lives in `~/.cadence-code`; model weights live in the
-Hugging Face cache.
+uninstalling. Codex and Antigravity data lives in `~/.cadence-code`; model
+weights live in the Hugging Face cache.
 
 </details>
 
@@ -174,6 +189,7 @@ uv run --locked cadence-code doctor
 ./dev check    # tests + plugin validation
 ./dev claude   # local branch test in Claude Code
 ./dev codex    # local branch test in Codex
+./dev agy      # local branch test in Antigravity
 ```
 
 See [AGENTS.md](AGENTS.md) for the project map,
