@@ -1,6 +1,8 @@
 import ast
 import json
+import os
 import subprocess
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
@@ -54,6 +56,24 @@ class PluginContractTests(unittest.TestCase):
         self.assertEqual(entry["policy"]["authentication"], "ON_INSTALL")
         self.assertEqual(entry["category"], "Productivity")
 
+    def test_antigravity_plugin_bundles_skills_and_mcp(self):
+        plugin = _json("plugin.json")
+        server = _json("mcp_config.json")["mcpServers"]["cadence-code"]
+
+        self.assertEqual(
+            plugin["$schema"], "https://antigravity.google/schemas/v1/plugin.json"
+        )
+        self.assertEqual(plugin["name"], "cadence-code")
+        # The published schema disallows additional properties; skills/ is
+        # discovered from the plugin root without a manifest field.
+        self.assertEqual(set(plugin), {"$schema", "name", "description"})
+        self.assertEqual(server["command"], "bash")
+        self.assertEqual(server["args"][0], "-c")
+        self.assertIn("export CADENCE_CODE_HOST=antigravity", server["args"][1])
+        self.assertEqual(server["env"]["CADENCE_CODE_HOST"], "antigravity")
+        self.assertEqual(server["timeoutSeconds"], 1800)
+        self.assertNotIn("cwd", server)
+
     def test_start_talking_is_explicit_and_references_exact_tool_surface(self):
         skill = (ROOT / "skills/start-talking/SKILL.md").read_text(
             encoding="utf-8"
@@ -84,6 +104,9 @@ class PluginContractTests(unittest.TestCase):
         self.assertIn("If `first_run` is true", command)
         self.assertIn('error_code: "session_not_started"', skill)
         self.assertIn('error_code: "session_not_started"', command)
+        self.assertIn("/start-talking", skill)
+        self.assertIn("`antigravity`", skill)
+        self.assertIn("bundled `scripts/setup` skill script", skill)
 
     def test_first_run_onboarding_covers_text_voice_and_host_controls(self):
         codex = (ROOT / "skills/start-talking/SKILL.md").read_text(
@@ -215,6 +238,21 @@ class PluginContractTests(unittest.TestCase):
             self.assertIn("exactly once", workflow)
             self.assertIn("Do not listen again", workflow)
 
+    def test_antigravity_install_workflow_is_documented(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        # Antigravity has no marketplace; the README documents installing
+        # from a local clone and removing the plugin by name.
+        self.assertIn("agy plugin install ./cadence-code", readme)
+        self.assertIn("agy plugin uninstall cadence-code", readme)
+        for command in (
+            "/start-talking",
+            "/jump-in",
+            "/voice-settings",
+            "/wrap-up",
+        ):
+            self.assertIn(f"`{command}`", readme)
+
     def test_bootstrap_is_valid_bash_and_checks_platform_before_rebuild(self):
         bootstrap = ROOT / "bin/cadence-code-mcp-bootstrap"
         result = subprocess.run(
@@ -241,6 +279,82 @@ class PluginContractTests(unittest.TestCase):
         for line in logical_source.splitlines():
             if line.strip().startswith("echo "):
                 self.assertIn(">", line, f"echo lacks a redirection: {line}")
+
+
+class AntigravityLauncherTests(unittest.TestCase):
+    """The `bash -c` launcher must survive an unexpanded ``${extensionPath}``.
+
+    AGY 1.1.6 accepts but neither expands ``${extensionPath}`` nor passes the
+    documented stdio env object, and installs plugins under
+    ``~/.gemini/config/plugins`` rather than the documented
+    ``~/.gemini/antigravity-cli/plugins``. These run the real program against a
+    fake plugin tree to prove every candidate root resolves, the exported host
+    identity reaches the bootstrap, and a missing bootstrap fails on stderr
+    only -- stdout is the live MCP JSON-RPC channel.
+    """
+
+    def _program(self):
+        server = _json("mcp_config.json")["mcpServers"]["cadence-code"]
+        self.assertEqual(server["command"], "bash")
+        self.assertEqual(server["args"][0], "-c")
+        return server["args"][1]
+
+    def _fake_plugin(self, root: Path):
+        (root / "bin").mkdir(parents=True)
+        bootstrap = root / "bin/cadence-code-mcp-bootstrap"
+        bootstrap.write_text(
+            '#!/bin/bash\necho "ran host=${CADENCE_CODE_HOST}"\n',
+            encoding="utf-8",
+        )
+        bootstrap.chmod(0o755)
+        return root
+
+    def _run(self, cwd: Path, home: Path):
+        env = {k: v for k, v in os.environ.items() if k != "extensionPath"}
+        env["HOME"] = str(home)
+        return subprocess.run(
+            ["bash", "-c", self._program()],
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            env=env,
+        )
+
+    def test_launcher_resolves_the_working_directory_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            plugin = self._fake_plugin(temp / "plugin")
+            result = self._run(cwd=plugin, home=temp / "home")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "ran host=antigravity\n")
+
+    def test_launcher_resolves_both_install_locations(self):
+        for install_root in (
+            ".gemini/config/plugins/cadence-code",
+            ".gemini/antigravity-cli/plugins/cadence-code",
+        ):
+            with self.subTest(install_root=install_root):
+                with tempfile.TemporaryDirectory() as directory:
+                    temp = Path(directory)
+                    (temp / "elsewhere").mkdir()
+                    home = temp / "home"
+                    self._fake_plugin(home / install_root)
+                    result = self._run(cwd=temp / "elsewhere", home=home)
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, "ran host=antigravity\n")
+
+    def test_launcher_fails_loudly_on_stderr_when_nothing_resolves(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            (temp / "empty").mkdir()
+            result = self._run(cwd=temp / "empty", home=temp / "home")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("could not locate bin/cadence-code-mcp-bootstrap", result.stderr)
 
 
 if __name__ == "__main__":

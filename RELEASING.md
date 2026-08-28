@@ -1,8 +1,9 @@
 # Releasing Cadence Code
 
 Cadence Code releases are source releases for the Codex and Claude Code
-marketplaces. The repository does not publish to PyPI, Homebrew, or any other
-package registry. The default-branch marketplace snapshots are the distribution
+marketplaces; Antigravity installs the same source directly with
+`agy plugin install`. The repository does not publish to PyPI, Homebrew, or any
+other package registry. The default-branch marketplace snapshots are the distribution
 channel: merging a bumped manifest version to `main` makes that source available
 to users who refresh and update, even before a matching GitHub Release exists.
 Treat the merge as publication, not as a private staging step.
@@ -40,12 +41,14 @@ Release remains a defense-in-depth check of the tag itself.
 
 ## Manual release checklist
 
-Exercise all four paths: fresh Codex install, Codex upgrade from the previous
-version, fresh Claude Code install, and Claude Code upgrade from the previous
-version. Stop one test session completely before starting the next because the
-machine-wide audio lock permits only one conversation. Before merge, use a
-temporary GitHub-backed test marketplace pinned to the pushed candidate branch
-or SHA; do not use a local checkout override.
+Exercise all six paths: fresh install and upgrade from the previous version for
+Codex, Claude Code, and Antigravity. Stop one test session completely before
+starting the next because the machine-wide audio lock permits only one
+conversation. Before merge, use a temporary GitHub-backed test marketplace
+pinned to the pushed candidate branch or SHA for the marketplace hosts, and a
+clean clone of the same candidate ref for `agy plugin install`; do not use a
+local checkout override. An Antigravity upgrade is a pull or re-clone of the
+released source followed by a reinstall and host restart.
 
 For each fresh test:
 
@@ -66,7 +69,7 @@ For every path:
   `--plugin-dir`, a checkout MCP override, or a stale cache, and record the
   source commit and manifest version.
 - Confirm `voice_status` reports the new version and the correct host
-  (`codex` or `claude-code`) after the required host restart.
+  (`codex`, `claude-code`, or `antigravity`) after the required host restart.
 - Invoke Start Talking, speak a response, listen and transcribe a reply,
   exercise Jump In, then use Wrap Up and confirm the session releases.
 - Start a second new host process and repeat the status/start/stop smoke test to
@@ -78,7 +81,8 @@ For every path:
    candidate checklist above.
 2. Merge the reviewed version-change pull request after every required check
    passes. The refreshed marketplace snapshot is now the released source.
-3. Refresh the normal GitHub-backed marketplaces for both hosts, update and
+3. Refresh the normal GitHub-backed marketplaces for the marketplace hosts and
+   reinstall the released source for Antigravity, update and
    restart, then repeat the source, version/host, and start/stop checks. Confirm
    they resolve the merged default-branch commit rather than the temporary test
    marketplace or a cached copy.
@@ -96,7 +100,7 @@ For every path:
    directing users to update their marketplace installation.
 
 Cadence Code deliberately uses the generic GitHub tag `vX.Y.Z` because one
-repository release serves both Codex and Claude Code. Current Claude Code's
+repository release serves every host. Current Claude Code's
 `claude plugin tag` command instead proposes the plugin-specific
 `cadence-code--vX.Y.Z` convention. That Claude-specific tag is not required for
 default-branch marketplace refreshes and must not replace the generic tag on a

@@ -49,6 +49,8 @@ def main() -> int:
 
     claude = load_json(".claude-plugin/plugin.json")
     codex = load_json(".codex-plugin/plugin.json")
+    antigravity = load_json("plugin.json")
+    antigravity_mcp = load_json("mcp_config.json")
     version = project["version"]
 
     failures: list[str] = []
@@ -66,10 +68,48 @@ def main() -> int:
     if (ROOT / ".mcp.json").exists():
         failures.append("Codex MCP configuration must be bundled in the manifest")
 
+    # Antigravity's published schema disallows extra properties, so the
+    # manifest stays minimal and the MCP declaration lives beside it.
+    if antigravity.get("$schema") != (
+        "https://antigravity.google/schemas/v1/plugin.json"
+    ):
+        failures.append("Antigravity plugin must use the official schema")
+    if antigravity.get("name") != "cadence-code":
+        failures.append("Antigravity plugin name must be cadence-code")
+    if set(antigravity) != {"$schema", "name", "description"}:
+        failures.append("Antigravity plugin must declare only schema-known fields")
+    antigravity_server = antigravity_mcp.get("mcpServers", {}).get(
+        "cadence-code", {}
+    )
+    antigravity_args = antigravity_server.get("args", [])
+    if antigravity_server.get("command") != "bash" or (
+        antigravity_args[:1] != ["-c"]
+    ):
+        failures.append("Antigravity MCP server must launch through bash -c")
+    antigravity_program = "".join(antigravity_args[1:])
+    # AGY 1.1.6 neither expands ${extensionPath} nor passes the documented
+    # stdio env object, so the program must locate the installed bootstrap
+    # and export the host identity itself.
+    for required in (
+        "export CADENCE_CODE_HOST=antigravity",
+        "bin/cadence-code-mcp-bootstrap",
+        "$HOME/.gemini/config/plugins/cadence-code",
+    ):
+        if required not in antigravity_program:
+            failures.append(
+                f"Antigravity MCP launcher must contain: {required}"
+            )
+    if antigravity_server.get("env", {}).get("CADENCE_CODE_HOST") != "antigravity":
+        failures.append("Antigravity MCP server must identify its host")
+    if "cwd" in antigravity_server:
+        failures.append("Antigravity MCP server must not assume a working directory")
+
     validate_development_skills(failures)
 
     required_paths = [
         "bin/cadence-code-mcp-bootstrap",
+        "mcp_config.json",
+        "plugin.json",
         "commands/jump-in.md",
         "commands/start-talking.md",
         "commands/voice-settings.md",
@@ -80,6 +120,7 @@ def main() -> int:
         "skills/jump-in/agents/openai.yaml",
         "skills/start-talking/SKILL.md",
         "skills/start-talking/agents/openai.yaml",
+        "skills/start-talking/scripts/setup",
         "skills/voice-settings/SKILL.md",
         "skills/voice-settings/agents/openai.yaml",
         "skills/wrap-up/SKILL.md",

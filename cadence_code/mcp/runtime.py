@@ -21,6 +21,7 @@ SESSION_LOCK_PATH = Path.home() / ".cadence-code" / "active-session.lock"
 _ONBOARDING_MARKER = "onboarding-v1.complete"
 _CANCEL_WAIT_S = 3.0
 _FINAL_SPEECH_WAIT_S = 30.0
+_STOPPED_DURING_START = "voice session was stopped before startup finished"
 
 
 class VoiceSessionBusy(RuntimeError):
@@ -85,6 +86,10 @@ class VoiceRuntime:
         self.data_dir = Path(data_dir) if data_dir is not None else CONFIG_DIR
         self.host = os.environ.get("CADENCE_CODE_HOST", "direct")
         self._operation_lock = threading.RLock()
+        self._start_state_lock = threading.RLock()
+        self._start_thread: threading.Thread | None = None
+        self._start_error: str | None = None
+        self._start_cancelled = False
         self._session_lock_file = None
         self._last_preflight: dict | None = None
         self._tts: Any = None
@@ -99,14 +104,67 @@ class VoiceRuntime:
     def ready(self) -> bool:
         return self._tts is not None and self._stt is not None
 
-    def start(self) -> dict:
+    def start(self, *, wait: bool = True) -> dict:
         """Acquire the local voice session and warm both speech models."""
+        if wait:
+            with self._start_state_lock:
+                self._start_cancelled = False
+            return self._start_sync()
+
+        with self._start_state_lock:
+            if self.ready:
+                return {
+                    **self.status(already_ready=True),
+                    "preflight": self._last_preflight,
+                }
+            if self._start_thread is not None and self._start_thread.is_alive():
+                # A voice_stop that raced the running loader no longer
+                # applies: the caller wants this start to finish.
+                self._start_cancelled = False
+                return self.status()
+
+            first_run = self._is_first_run()
+            self._start_error = None
+            self._start_cancelled = False
+            self._start_thread = threading.Thread(
+                target=self._start_in_background,
+                name="cadence-code-model-loader",
+                daemon=True,
+            )
+            self._start_thread.start()
+            return self.status(first_run=first_run)
+
+    def _start_in_background(self) -> None:
+        try:
+            self._start_sync()
+        except Exception as exc:
+            with self._start_state_lock:
+                self._start_error = str(exc)
+            return
+        # A voice_stop that arrived while the models were loading could not
+        # tear the session down itself; honor it now rather than leaving warm
+        # models and the machine-wide session lock behind.
+        with self._start_state_lock:
+            cancelled = self._start_cancelled
+        if cancelled:
+            with self._operation_lock:
+                self._release_locked()
+            with self._start_state_lock:
+                self._start_error = _STOPPED_DURING_START
+
+    def _start_is_cancelled(self) -> bool:
+        with self._start_state_lock:
+            return self._start_cancelled
+
+    def _start_sync(self) -> dict:
         with self._operation_lock:
             if self.ready:
                 return {
                     **self.status(already_ready=True),
                     "preflight": self._last_preflight,
                 }
+            if self._start_is_cancelled():
+                raise RuntimeError(_STOPPED_DURING_START)
 
             self._acquire_session_lock()
             started_at = time.monotonic()
@@ -128,6 +186,11 @@ class VoiceRuntime:
                 )
 
                 self._tts = get_tts_provider(self.config.tts).load()
+                # A model load cannot be interrupted, so cancellation is
+                # checked between the two loads; the except path below then
+                # releases everything a partial start acquired.
+                if self._start_is_cancelled():
+                    raise RuntimeError(_STOPPED_DURING_START)
                 self._stt = get_stt_provider(self.config.stt).load()
                 self._mark_onboarding_complete()
             except Exception as exc:
@@ -212,7 +275,17 @@ class VoiceRuntime:
             return self._listen_locked(timeout_ms, silence_ms)
 
     def stop(self, *, wait_for_speech: bool = False) -> dict:
-        stopped = self.ready or self._session_lock_file is not None
+        # Cancel an in-flight background start synchronously so the loader
+        # cannot finish into a leaked warm session after this stop returns.
+        # The loader aborts at its next checkpoint (or tears down on
+        # completion), releasing the models and the machine-wide lock.
+        with self._start_state_lock:
+            starting = (
+                self._start_thread is not None and self._start_thread.is_alive()
+            )
+            if starting:
+                self._start_cancelled = True
+        stopped = starting or self.ready or self._session_lock_file is not None
         with self._queued_listen_lock:
             queued_listen = self._queued_listen
             self._queued_listen = None
@@ -292,13 +365,22 @@ class VoiceRuntime:
         already_ready: bool = False,
         first_run: bool | None = None,
     ) -> dict:
+        with self._start_state_lock:
+            starting = (
+                self._start_thread is not None and self._start_thread.is_alive()
+            )
+            start_error = self._start_error
+
         return {
             "version": __version__,
             "host": self.host,
             "first_run": self._is_first_run() if first_run is None else first_run,
             "ready": self.ready,
+            "starting": starting,
+            "start_error": start_error,
             "already_ready": already_ready,
             "backend": "mlx-audio",
+            "preflight": self._last_preflight,
             "capture": {
                 "silence_ms": self.config.stt.silence_ms,
                 "timeout_ms": self.config.stt.max_listen_ms,

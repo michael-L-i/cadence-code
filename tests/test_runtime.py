@@ -57,6 +57,19 @@ class _FailingSTT(_FakeSTT):
         raise RuntimeError("model unavailable")
 
 
+class _BlockingTTS(_FakeTTS):
+    def __init__(self, loading: threading.Event, release: threading.Event):
+        super().__init__()
+        self.loading = loading
+        self.release = release
+
+    def load(self):
+        self.loading.set()
+        if not self.release.wait(timeout=1):
+            raise TimeoutError("test model load was not released")
+        return super().load()
+
+
 def _fake_registry(tts, stt):
     module = ModuleType("cadence_code.providers.registry")
     module.get_tts_provider = Mock(return_value=tts)
@@ -275,6 +288,111 @@ class VoiceRuntimeTests(unittest.TestCase):
         self.assertTrue(stopped["stopped"])
         self.assertFalse(runtime.ready)
         self._mlx_core.clear_cache.assert_called_once()
+
+    def test_nonblocking_start_reports_progress_until_models_are_ready(self):
+        loading = threading.Event()
+        release = threading.Event()
+        registry = _fake_registry(_BlockingTTS(loading, release), _FakeSTT())
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with (
+                patch.object(
+                    runtime_module, "SESSION_LOCK_PATH", root / "session.lock"
+                ),
+                patch.dict(os.environ, {"CADENCE_CODE_HOST": "antigravity"}),
+                patch.dict(sys.modules, {"cadence_code.providers.registry": registry}),
+                patch(
+                    "cadence_code.audio.preflight.run_preflight",
+                    return_value=_preflight_result(),
+                ),
+            ):
+                runtime = runtime_module.VoiceRuntime(
+                    Config(), data_dir=root / "antigravity"
+                )
+                started = runtime.start(wait=False)
+                self.assertTrue(loading.wait(timeout=1))
+                loading_status = runtime.status()
+                release.set()
+
+                deadline = time.monotonic() + 1
+                while runtime.status()["starting"] and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                ready_status = runtime.status()
+                runtime.stop()
+
+        self.assertTrue(started["starting"])
+        self.assertFalse(started["ready"])
+        self.assertTrue(loading_status["starting"])
+        self.assertIsNone(loading_status["start_error"])
+        self.assertTrue(ready_status["ready"])
+        self.assertFalse(ready_status["starting"])
+        self.assertIsNone(ready_status["start_error"])
+        self.assertEqual(ready_status["host"], "antigravity")
+        self.assertEqual(ready_status["preflight"], _preflight_result())
+
+    def test_nonblocking_start_surfaces_model_failure_in_status(self):
+        registry = _fake_registry(_FakeTTS(), _FailingSTT())
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with (
+                patch.object(
+                    runtime_module, "SESSION_LOCK_PATH", root / "session.lock"
+                ),
+                patch.dict(sys.modules, {"cadence_code.providers.registry": registry}),
+                patch(
+                    "cadence_code.audio.preflight.run_preflight",
+                    return_value=_preflight_result(),
+                ),
+            ):
+                runtime = runtime_module.VoiceRuntime(Config(), data_dir=root / "data")
+                runtime.start(wait=False)
+                deadline = time.monotonic() + 1
+                while runtime.status()["starting"] and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                status = runtime.status()
+
+        self.assertFalse(status["ready"])
+        self.assertFalse(status["starting"])
+        self.assertIn("model unavailable", status["start_error"])
+
+    def test_stop_during_background_start_cancels_and_releases_everything(self):
+        loading = threading.Event()
+        release = threading.Event()
+        registry = _fake_registry(_BlockingTTS(loading, release), _FakeSTT())
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with (
+                patch.object(
+                    runtime_module, "SESSION_LOCK_PATH", root / "session.lock"
+                ),
+                patch.dict(sys.modules, {"cadence_code.providers.registry": registry}),
+                patch(
+                    "cadence_code.audio.preflight.run_preflight",
+                    return_value=_preflight_result(),
+                ),
+            ):
+                runtime = runtime_module.VoiceRuntime(Config(), data_dir=root / "data")
+                runtime.start(wait=False)
+                self.assertTrue(loading.wait(timeout=1))
+                # stop() cancels the start synchronously, then blocks on the
+                # operation lock; free the in-flight model load shortly after
+                # so the loader hits its cancellation checkpoint.
+                threading.Timer(0.05, release.set).start()
+                result = runtime.stop()
+
+                deadline = time.monotonic() + 1
+                while runtime.status()["starting"] and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                status = runtime.status()
+
+        self.assertTrue(result["stopped"])
+        self.assertFalse(status["ready"])
+        self.assertFalse(status["starting"])
+        self.assertIn("stopped before startup finished", status["start_error"])
+        self.assertIsNone(runtime._session_lock_file)
 
     def test_listen_after_opens_mic_as_soon_as_playback_finishes(self):
         stt = _FakeSTT()

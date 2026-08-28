@@ -25,7 +25,8 @@ and Git workflow. Claude-specific notes below override only when they conflict.
   the plugin manifest starts the lightweight stdio MCP server without manual
   MCP setup.
 - `voice_start` acquires the machine-wide voice-session lock and loads TTS and
-  STT. The first call may wait for model downloads; later turns reuse them.
+  STT in the background; poll `voice_status` until `ready` is true. The first
+  call may trigger model downloads; later turns reuse the warm models.
 - `commands/start-talking.md` drives the conversation. Claude acknowledges longer
   tasks briefly and performs the actual work silently. Detailed results remain
   visible in Claude Code, while `voice_speak` receives a separately composed,
