@@ -266,19 +266,37 @@ class DevCliTests(unittest.TestCase):
         self.assertIn("arg=test-model", result.stdout)
         self.assertNotIn("arg=--no-install", result.stdout)
 
-    def test_agy_installs_the_checkout_because_workspace_config_is_ignored(self):
+    def test_agy_installs_a_staged_copy_because_workspace_config_is_ignored(self):
         """AGY 1.1.6 ignores workspace MCP configuration, so ./dev agy installs.
 
         Verified against the real CLI: a session in the checkout reports no
-        voice_ tools until `agy plugin install .` runs. Skipping the install
-        would leave ./dev agy silently useless.
+        voice_ tools until `agy plugin install` runs, and the installer copies
+        its argument verbatim -- development venvs included, and a stale
+        symlink in them aborts the copy. The launcher must therefore install a
+        staging copy holding only tracked and non-ignored files.
         """
         with tempfile.TemporaryDirectory() as directory:
             temp = Path(directory)
             fake_agy = temp / "agy"
+            # On install, record what the staged tree contains while it still
+            # exists; the launcher removes it after the call.
             fake_agy.write_text(
                 "#!/bin/bash\n"
-                "printf 'call=%s\\n' \"$*\" >>" + str(temp / "calls") + "\n",
+                f"calls={temp / 'calls'}\n"
+                'printf \'call=%s\\n\' "$*" >>"$calls"\n'
+                'if [ "${1:-}" = plugin ] && [ "${2:-}" = install ]; then\n'
+                '  staged="$3"\n'
+                '  [ "$staged" != "' + str(ROOT) + '" ] || '
+                "echo staged=checkout-itself >>\"$calls\"\n"
+                '  [ -f "$staged/plugin.json" ] && '
+                "echo staged=plugin-json >>\"$calls\"\n"
+                '  [ -x "$staged/bin/cadence-code-mcp-bootstrap" ] && '
+                "echo staged=bootstrap-executable >>\"$calls\"\n"
+                '  [ -e "$staged/.git" ] || echo staged=no-git >>"$calls"\n'
+                '  [ -e "$staged/.cadence-code-dev" ] || '
+                "echo staged=no-dev-state >>\"$calls\"\n"
+                "fi\n"
+                "exit 0\n",
                 encoding="utf-8",
             )
             fake_agy.chmod(0o755)
@@ -293,7 +311,12 @@ class DevCliTests(unittest.TestCase):
             )
             calls = (temp / "calls").read_text(encoding="utf-8")
             self.assertIn("call=plugin uninstall cadence-code", calls)
-            self.assertIn(f"call=plugin install {ROOT}", calls)
+            self.assertIn("call=plugin install ", calls)
+            self.assertNotIn("staged=checkout-itself", calls)
+            self.assertIn("staged=plugin-json", calls)
+            self.assertIn("staged=bootstrap-executable", calls)
+            self.assertIn("staged=no-git", calls)
+            self.assertIn("staged=no-dev-state", calls)
 
             (temp / "calls").unlink()
             subprocess.run(

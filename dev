@@ -70,9 +70,9 @@ the repository root. Inside Antigravity, run /start-talking.
 
 Unlike the other hosts this does change user-level state: AGY 1.1.6 ignores a
 workspace MCP configuration, so a plugin install is the only way it loads the
-voice tools. The install copies the checkout into
-~/.gemini/config/plugins/cadence-code, so rerun ./dev agy after changing a
-manifest, a skill, or the bootstrap; Python sources still run from the
+voice tools. The install stages the checkout's tracked and non-ignored files
+into ~/.gemini/config/plugins/cadence-code, so rerun ./dev agy after changing
+a manifest, a skill, or the bootstrap; Python sources still run from the
 checkout because its own bootstrap resolves first. Remove the plugin with:
 
   agy plugin uninstall cadence-code
@@ -359,13 +359,23 @@ run_agy() {
   cd "${REPO_ROOT}"
   if [ "${install}" = "1" ]; then
     # AGY 1.1.6 does not read a workspace MCP configuration, so the checkout
-    # has to be installed as a real plugin for its tools to load.
+    # has to be installed as a real plugin for its tools to load, and its
+    # installer copies the given directory verbatim. Stage only tracked and
+    # non-ignored files so development venvs, .git, and other local state are
+    # never copied into ~/.gemini (a stale entry there even aborts the copy).
     # Reinstalling picks up manifest, skill, and bootstrap changes.
+    local staging
+    staging=$(mktemp -d "${TMPDIR:-/tmp}/cadence-code-agy.XXXXXX")
+    git -C "${REPO_ROOT}" ls-files -z --cached --others --exclude-standard |
+      tar -C "${REPO_ROOT}" --null -T - -cf - |
+      tar -xf - -C "${staging}"
     "${agy_bin}" plugin uninstall cadence-code >/dev/null 2>&1 || true
-    if ! "${agy_bin}" plugin install "${REPO_ROOT}" >&2; then
+    if ! "${agy_bin}" plugin install "${staging}" >&2; then
+      rm -rf -- "${staging}"
       echo "[cadence-code-dev] ERROR: could not install the checkout plugin." >&2
       exit 1
     fi
+    rm -rf -- "${staging}"
     echo "[cadence-code-dev] installed the checkout as an Antigravity plugin" >&2
   fi
   export CADENCE_CODE_DATA_DIR="${data_dir}"
