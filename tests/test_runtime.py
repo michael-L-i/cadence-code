@@ -357,6 +357,43 @@ class VoiceRuntimeTests(unittest.TestCase):
         self.assertFalse(status["starting"])
         self.assertIn("model unavailable", status["start_error"])
 
+    def test_stop_during_background_start_cancels_and_releases_everything(self):
+        loading = threading.Event()
+        release = threading.Event()
+        registry = _fake_registry(_BlockingTTS(loading, release), _FakeSTT())
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with (
+                patch.object(
+                    runtime_module, "SESSION_LOCK_PATH", root / "session.lock"
+                ),
+                patch.dict(sys.modules, {"cadence_code.providers.registry": registry}),
+                patch(
+                    "cadence_code.audio.preflight.run_preflight",
+                    return_value=_preflight_result(),
+                ),
+            ):
+                runtime = runtime_module.VoiceRuntime(Config(), data_dir=root / "data")
+                runtime.start(wait=False)
+                self.assertTrue(loading.wait(timeout=1))
+                # stop() cancels the start synchronously, then blocks on the
+                # operation lock; free the in-flight model load shortly after
+                # so the loader hits its cancellation checkpoint.
+                threading.Timer(0.05, release.set).start()
+                result = runtime.stop()
+
+                deadline = time.monotonic() + 1
+                while runtime.status()["starting"] and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                status = runtime.status()
+
+        self.assertTrue(result["stopped"])
+        self.assertFalse(status["ready"])
+        self.assertFalse(status["starting"])
+        self.assertIn("stopped before startup finished", status["start_error"])
+        self.assertIsNone(runtime._session_lock_file)
+
     def test_listen_after_opens_mic_as_soon_as_playback_finishes(self):
         stt = _FakeSTT()
         transcribe_threads = []
